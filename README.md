@@ -251,10 +251,20 @@ problema de segurança mal posto, e tentar resolver por lista de padrões daria
 falsa confiança. Quem quiser fronteira real deve isolar por cópia de trabalho
 separada.
 
-**O subagente roda em modo autônomo.** Ele escreve no disco sem pedir permissão,
-e o Codex responde as dúvidas de escopo sozinho. São dois agentes com poder de
-escrita e nenhum humano no circuito de decisão. Isso foi uma escolha consciente
-de projeto. Despache sobre trabalho versionado, para que o diff seja revisável.
+**O subagente roda sem humano no circuito de decisão.** Ele escreve no disco sem
+perguntar, e o Codex responde as dúvidas de escopo sozinho. São dois agentes com
+poder de escrita e nenhuma pessoa entre eles. Isso foi uma escolha consciente de
+projeto. Despache sobre trabalho versionado, para que o diff seja revisável.
+
+O padrão de fábrica do modo de permissão é `auto`, e não o contorno total. A
+razão é que o padrão vale para quem instala a ferramenta, não apenas para quem a
+escreveu: entregar contorno completo de permissão por omissão seria decidir pelo
+outro a escolha de maior consequência do despacho, num repositório que a
+ferramenta desconhece. Quem quer autonomia irrestrita pede explicitamente:
+
+```bash
+ccx dispatch --permission-mode bypassPermissions --task "..." --cwd .
+```
 
 ---
 

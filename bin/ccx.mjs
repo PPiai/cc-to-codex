@@ -70,12 +70,24 @@ const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 // publicada e relatorio de pesquisa citaram flags que nao existem.
 const PERMISSION_MODES = ['acceptEdits', 'auto', 'bypassPermissions', 'manual', 'dontAsk', 'plan'];
 
-// Padrao autonomo, conforme a decisao de autonomia da spec. Fica explicito
-// aqui porque e a escolha de maior consequencia do dispatch. A cerca
-// continua valendo neste modo: hook de pre-uso de ferramenta dispara antes
-// da checagem de modo de permissao, em todos os modos, e um `deny` do hook
-// barra a chamada mesmo sob bypassPermissions.
-const DEFAULT_PERMISSION_MODE = 'bypassPermissions';
+// Padrao de fabrica: modo automatico.
+//
+// A decisao de autonomia da spec foi tomada para a maquina de quem escreveu
+// a ferramenta, e la o padrao natural seria contornar toda checagem. Mas isto
+// e distribuivel: quem instala e despacha herda o padrao sem escolhe-lo, num
+// repositorio que a ferramenta desconhece. Entregar contorno total de
+// permissao como padrao de fabrica seria decidir pelo outro a coisa de maior
+// consequencia do dispatch.
+//
+// O modo automatico resolve sozinho o que e seguro e mantem o subagente
+// trabalhando sem humano no circuito, que era o requisito real. Quem quer o
+// contorno completo pede de forma explicita com --permission-mode
+// bypassPermissions, e ai a escolha tem um dono.
+//
+// A cerca vale em qualquer modo: o hook de pre-uso de ferramenta dispara
+// antes da checagem de modo, e a negacao dele barra a chamada inclusive sob
+// bypassPermissions.
+const DEFAULT_PERMISSION_MODE = 'auto';
 
 // Flags que o supervisor usa na linha de comando do Claude. O doctor
 // confere cada uma contra a ajuda local para detectar mudanca de versao

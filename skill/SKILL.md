@@ -146,9 +146,13 @@ seu, apresentado como seu.
   shell pode contorná-la**: um comando pode mudar de diretório, usar caminho
   absoluto, ou chamar outro programa. Quem precisa de fronteira real deve isolar
   numa cópia de trabalho separada.
-- **O subagente roda em modo autônomo e escreve no disco sem pedir permissão.**
-  Não há humano no circuito de decisão. Despache sobre trabalho versionado, para
-  que o diff seja revisável e reversível.
+- **O subagente roda sem humano no circuito de decisão.** O padrão de fábrica é
+  o modo de permissão automático, que resolve sozinho o que é seguro em vez de
+  contornar toda checagem. Ainda assim ele escreve no disco sem perguntar nada a
+  você, então despache sobre trabalho versionado, para que o diff seja revisável
+  e reversível. Para contorno completo de permissão, passe
+  `--permission-mode bypassPermissions` de forma explícita no despacho, ciente
+  de que isso remove as checagens restantes.
 - **Custo por turno é real.** A medição desta máquina ficou na casa de 0,15 USD
   no primeiro turno de uma sessão, inflada por criação de cache de contexto.
   Turnos seguintes na mesma sessão custam bem menos, então preferir `say` numa
