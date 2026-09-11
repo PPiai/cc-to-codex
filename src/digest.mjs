@@ -532,13 +532,12 @@ export function createDigest(seed = {}) {
 
     const cost = money(ev.total_cost_usd);
     state.lastReportedCostUsd = cost;
-    // MEDIDO em 2026-09-11, duas mensagens no mesmo processo: o campo chegou
-    // 0.146507 no primeiro resultado e 0.161494 no segundo. A diferenca de
-    // cerca de 0.015 corresponde a um segundo turno trivial aproveitando
-    // cache, nao ao custo cheio de um turno novo. Para comparar, uma sessao
-    // isolada de um unico turno equivalente custou 0.148516 sozinha. Logo o
-    // campo ja vem ACUMULADO por sessao, e somar multiplicaria o valor a cada
-    // turno, reportando gasto que nunca existiu.
+    // CONFIRMADO com o Claude real em 2026-09-11, dois turnos numa sessao
+    // despachada pelo proprio ccx: o campo leu 0.363633 no primeiro resultado
+    // e 0.411190 no segundo. Cresceu em vez de reiniciar, entao ja vem
+    // ACUMULADO por sessao. Somar multiplicaria o valor a cada turno,
+    // reportando gasto que nunca existiu. O custo isolado do segundo turno
+    // saiu 0.047557, coerente com uma tarefa trivial aproveitando cache.
     //
     // O maximo protege contra um resultado que chegue com valor menor, o que
     // aconteceria se o campo faltasse e virasse zero: o acumulado nunca cai.
