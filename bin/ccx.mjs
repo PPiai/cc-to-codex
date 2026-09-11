@@ -691,8 +691,12 @@ function cmdAnswer(ctx) {
   if (state.status !== STATUS.ASKING || !state.pendingQuestion) {
     throw fail(
       EXIT.BAD_STATE,
-      `a sessao ${id} nao tem pergunta pendente: estado atual e ${statusLabel(state.status)}. ` +
-        `${remedyFor(state)}`,
+      // O estado aparece duas vezes de proposito: o rotulo traduzido e para
+      // quem le, e o valor cru entre colchetes e para o orquestrador, que
+      // compara com o mesmo vocabulario que recebe no modo JSON. Sem o valor
+      // cru o Codex teria que aprender duas linguagens para o mesmo campo.
+      `a sessao ${id} nao tem pergunta pendente: estado atual e ` +
+        `${statusLabel(state.status)} [${state.status}]. ${remedyFor(state)}`,
     );
   }
 

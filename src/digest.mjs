@@ -263,12 +263,18 @@ export function createDigest(seed = {}) {
     // trabalho tinha terminado.
     lastOutcome: rest.lastOutcome ?? null,
 
-    // --- valores crus do ultimo `result`, para desempate futuro ---
-    // PORQUE: nao foi medido se `total_cost_usd` e `permission_denials` vem
-    // por turno ou acumulados no processo. O CONTRACT.md manda somar, e e o
-    // que fazemos. Se a medicao mostrar que sao acumulados, a correcao e
-    // trocar as duas somas marcadas com ACUMULADO? por atribuicao direta
-    // destes dois campos, e nada mais no arquivo muda.
+    // --- valores crus do ultimo `result` ---
+    // A duvida sobre acumulo foi RESOLVIDA POR MEDICAO em 2026-09-11, e os
+    // dois campos se comportam de formas OPOSTAS:
+    //
+    // - `total_cost_usd` vem ACUMULADO por sessao. Dois turnos no mesmo
+    //   processo leram 0.146507 e depois 0.161494. Nao somamos.
+    // - `permission_denials` vem POR TURNO. Num teste com escrita negada, o
+    //   primeiro resultado trouxe uma negacao e o segundo veio com a lista
+    //   vazia. Se fosse acumulado a negacao teria permanecido. Somamos.
+    //
+    // Tratar os dois igual, em qualquer direcao, produz numero errado num
+    // deles. Por isso os valores crus continuam guardados aqui.
     lastReportedCostUsd: rest.lastReportedCostUsd ?? 0,
     lastReportedDenials: rest.lastReportedDenials ?? 0,
   };
@@ -476,7 +482,8 @@ export function createDigest(seed = {}) {
     const denials = Array.isArray(ev.permission_denials) ? ev.permission_denials : [];
     state.lastReportedDenials = denials.length;
     if (denials.length > 0) {
-      // ACUMULADO? soma conforme docs/CONTRACT.md.
+      // Somar esta correto: medido que este campo vem POR TURNO, ao
+      // contrario do custo. Ver a nota no topo do arquivo.
       state.permissionDenials += denials.length;
       const samples = [];
       for (const denial of denials) {
@@ -525,14 +532,27 @@ export function createDigest(seed = {}) {
 
     const cost = money(ev.total_cost_usd);
     state.lastReportedCostUsd = cost;
-    // ACUMULADO? soma conforme docs/CONTRACT.md.
-    state.totalCostUsd = money(state.totalCostUsd + cost);
+    // MEDIDO em 2026-09-11, duas mensagens no mesmo processo: o campo chegou
+    // 0.146507 no primeiro resultado e 0.161494 no segundo. A diferenca de
+    // cerca de 0.015 corresponde a um segundo turno trivial aproveitando
+    // cache, nao ao custo cheio de um turno novo. Para comparar, uma sessao
+    // isolada de um unico turno equivalente custou 0.148516 sozinha. Logo o
+    // campo ja vem ACUMULADO por sessao, e somar multiplicaria o valor a cada
+    // turno, reportando gasto que nunca existiu.
+    //
+    // O maximo protege contra um resultado que chegue com valor menor, o que
+    // aconteceria se o campo faltasse e virasse zero: o acumulado nunca cai.
+    const previousTotal = state.totalCostUsd;
+    state.totalCostUsd = money(Math.max(cost, previousTotal));
+    // O custo do turno isolado e a diferenca entre leituras consecutivas, que
+    // e a unica forma de te-lo sem que o Claude o reporte separadamente.
+    const turnCost = money(Math.max(0, state.totalCostUsd - previousTotal));
 
     const ms = Number.isFinite(Number(ev.duration_ms))
       ? Number(ev.duration_ms)
       : Math.max(0, now() - turnStartedAtMs);
 
-    state.turnLog.push({ n: state.turn, outcome, ms, costUsd: cost });
+    state.turnLog.push({ n: state.turn, outcome, ms, costUsd: turnCost });
     while (state.turnLog.length > LIMITS.turnHistory) state.turnLog.shift();
     state.turnsCompleted += 1;
     state.outcomeCounts[outcome] = (state.outcomeCounts[outcome] ?? 0) + 1;
@@ -553,7 +573,9 @@ export function createDigest(seed = {}) {
       isError: ev.is_error === true,
       stopReason: ev.stop_reason ?? null,
       numTurns: Number.isFinite(Number(ev.num_turns)) ? Number(ev.num_turns) : null,
-      costUsd: cost,
+      // Custo DESTE turno, nao o acumulado da sessao. O acumulado vive em
+      // state.totalCostUsd e apareceria inflado aqui.
+      costUsd: turnCost,
       ms,
     }));
 
