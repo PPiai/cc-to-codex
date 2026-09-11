@@ -1,0 +1,11 @@
+# Estado das sessoes despachadas. O segundo candidato de raiz de estado
+# e uma pasta dentro do diretorio de trabalho, entao pode nascer aqui.
+.ccx/
+
+# Dependencias. O runtime e Node puro sem dependencias, mas ferramentas
+# de desenvolvimento podem criar esta pasta.
+node_modules/
+
+# Artefatos locais
+*.log
+.DS_Store
