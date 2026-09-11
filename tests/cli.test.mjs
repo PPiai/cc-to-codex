@@ -25,6 +25,116 @@ const semSupervisor = fs.existsSync(path.join(RAIZ, 'src', 'supervisor.mjs'))
   : 'src/supervisor.mjs ainda nao existe';
 const skip = semCli || semSupervisor;
 
+// ---------------------------------------------------------------------------
+// Limpeza de processo
+// ---------------------------------------------------------------------------
+//
+// Estes tres auxiliares existem por um motivo medido, nao por precaucao: uma
+// sessao despachada sobrevive ao teste que a criou. O supervisor e destacado
+// de proposito, entao ninguem o derruba por tabela quando o processo de teste
+// termina. Ver a nota no gancho de limpeza do ambiente.
+
+/** Extrai o id de sessao da saida do dispatch, em JSON ou em texto. */
+function extrairId(stdout) {
+  const texto = String(stdout ?? '');
+  const ultima = texto.trim().split(/\r?\n/).filter(Boolean).at(-1);
+  try {
+    const obj = JSON.parse(ultima);
+    if (obj && typeof obj.id === 'string') return obj.id;
+  } catch {
+    // Saida de humano. Cai para a leitura por texto abaixo.
+  }
+  // A linha de sessao do dispatch tem a forma "sessao <id>  rotulo ...".
+  const m = texto.match(/^\s*sessao\s+([a-z0-9]{6,})/mi);
+  return m ? m[1] : null;
+}
+
+/** Le o pid do supervisor no estado da sessao. Null se nao der para ler. */
+function lerPidDaSessao(stateDir, id) {
+  const arquivo = path.join(stateDir, 'sessions', id, 'state.json');
+  try {
+    const pid = JSON.parse(fs.readFileSync(arquivo, 'utf8')).pid;
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pids de TODAS as sessoes que existem em disco, independente de terem sido
+ * registradas pelo teste. E a rede que pega o despacho interrompido antes de
+ * imprimir o proprio id.
+ */
+function pidsDeTodasAsSessoes(stateDir) {
+  const raiz = path.join(stateDir, 'sessions');
+  let ids = [];
+  try {
+    ids = fs.readdirSync(raiz, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+  return ids.map((id) => lerPidDaSessao(stateDir, id)).filter(Boolean);
+}
+
+/**
+ * Pids de processos cuja linha de comando cita esta raiz de estado.
+ *
+ * Toda estrategia baseada em arquivo tem a mesma corrida: o dispatch cria a
+ * sessao e destaca o supervisor, mas quem escreve o estado com o pid dentro e
+ * o supervisor, milissegundos depois. Um teste que termina nessa janela deixa
+ * um diretorio de sessao VAZIO e um processo vivo que nenhum arquivo aponta.
+ * Foi o que sobrou depois de corrigir a lista de ids e a varredura de estado:
+ * exatamente um par por rodada, com o diretorio da sessao sem nenhum arquivo.
+ *
+ * Perguntar ao sistema operacional nao tem essa janela, porque o processo ja
+ * existe antes de qualquer arquivo. A raiz de estado e unica por ambiente de
+ * teste, entao casar pela linha de comando nao alcanca processo de terceiro.
+ */
+function pidsPelaLinhaDeComando(stateDir) {
+  const alvo = stateDir.toLowerCase();
+  try {
+    if (process.platform === 'win32') {
+      const ps = spawnSync('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }",
+      ], { encoding: 'utf8', timeout: 20000 });
+      return (ps.stdout ?? '')
+        .split(/\r?\n/)
+        .map((linha) => linha.split('\t'))
+        .filter(([, cmd]) => (cmd ?? '').toLowerCase().includes(alvo))
+        .map(([pid]) => Number(pid))
+        .filter((n) => Number.isInteger(n) && n > 0);
+    }
+    const ps = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', timeout: 20000 });
+    return (ps.stdout ?? '')
+      .split('\n')
+      .filter((linha) => linha.toLowerCase().includes(alvo))
+      .map((linha) => Number(linha.trim().split(/\s+/)[0]))
+      .filter((n) => Number.isInteger(n) && n > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Derruba o processo e seus filhos. A arvore importa: matar so o supervisor
+ * deixaria o Claude, que e filho dele, vivo e orfao.
+ */
+function matarArvore(pid) {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8', timeout: 10000 });
+    return;
+  }
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* ja morreu */ }
+  }
+}
+
 // PORTAO DE SEGURANCA. Medido em 2026-09-11: quando CCX_CLAUDE_BIN aponta
 // para um caminho que a resolucao nao aceita, ela IGNORA o override em
 // silencio e cai na busca por PATH, onde acha o binario REAL instalado na
@@ -60,11 +170,45 @@ function ambiente({ behavior = 'done', extra = {}, strategy = 'auto' } = {}) {
   // mora nele.
   const despachadas = [];
   test.after(() => {
+    // `stop` apenas ENFILEIRA o pedido e retorna: quem encerra e o supervisor,
+    // ao ler o canal de comandos. O processo de teste morre antes disso, e o
+    // supervisor sobrevive segurando o Claude. Medido depois de quatro rodadas
+    // da suite: 76 processos orfaos vivos, 38 pares de supervisor e fixture,
+    // degradando a maquina a ponto de testes de 2 segundos passarem a levar 40
+    // e falharem por tempo esgotado. Entao pedimos com jeito e, logo depois,
+    // garantimos.
     for (const id of despachadas) {
       try {
         spawnSync(process.execPath, [CCX, 'stop', id], { cwd: work, env, encoding: 'utf8', timeout: 10000 });
       } catch {
         // Sessao ja encerrada, ou raiz ja removida. Nao ha o que salvar.
+      }
+    }
+
+    // A varredura NAO usa a lista de ids, e essa e a diferenca que importa.
+    // A lista depende do dispatch ter chegado a imprimir o id, e um despacho
+    // interrompido por tempo esgotado cria o supervisor sem nunca imprimir
+    // nada: o processo da CLI morre, o supervisor e destacado e continua vivo.
+    // Foi assim que um par sobreviveu mesmo com a lista ja corrigida. Ler o
+    // diretorio de estado encontra toda sessao que existiu, registrada ou nao.
+    //
+    // Matar a ARVORE, e nao so o supervisor, e o que leva junto o Claude, que
+    // e filho dele.
+    for (const pid of pidsDeTodasAsSessoes(stateDir)) {
+      try {
+        matarArvore(pid);
+      } catch {
+        // Processo ja morto. Nada a fazer.
+      }
+    }
+
+    // Ultima rede, e a unica sem corrida: perguntar ao sistema quem cita esta
+    // raiz de estado. Pega o supervisor que nasceu e ainda nao escreveu nada.
+    for (const pid of pidsPelaLinhaDeComando(stateDir)) {
+      try {
+        matarArvore(pid);
+      } catch {
+        // Processo ja morto. Nada a fazer.
       }
     }
     // A remocao e best-effort e NUNCA derruba o teste. No Windows o diretorio
@@ -108,7 +252,17 @@ function ambiente({ behavior = 'done', extra = {}, strategy = 'auto' } = {}) {
     const r = spawnSync(process.execPath, [CCX, ...args], {
       cwd: work, env, encoding: 'utf8', timeout: 30000,
     });
-    return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    const saida = { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+    // O registro para limpeza mora na funcao BASE, e nao nos invocadores.
+    // Ja errei isso uma vez: pus no invocador com portao, e o invocador cru,
+    // que existe para testar recusa e saida de erro, continuou despachando
+    // sem registrar. Sobrou exatamente um par de processos vivo por rodada.
+    // Toda chamada da CLI passa por aqui, entao aqui nada escapa.
+    if (args[0] === 'dispatch') {
+      const id = extrairId(saida.stdout);
+      if (id && !despachadas.includes(id)) despachadas.push(id);
+    }
+    return saida;
   };
 
   const statePath = path.join(dir, 'fake-state.json');
@@ -126,6 +280,8 @@ function ambiente({ behavior = 'done', extra = {}, strategy = 'auto' } = {}) {
   // do mesmo jeito, que e a unica garantia que vale.
   const ccx = (...args) => {
     if (args[0] === 'dispatch') exigirClaudeFalso(amb);
+    // O registro para limpeza fica na funcao base `executar`, que todos os
+    // invocadores usam. Aqui so vive o portao de seguranca.
     return executar(...args);
   };
 
