@@ -1,0 +1,31 @@
+{
+  "name": "cc-to-codex",
+  "version": "0.1.0",
+  "description": "CLI ccx: despacha e acompanha sessoes do Claude Code a partir do Codex CLI, com estado compacto de tamanho constante.",
+  "type": "module",
+  "bin": {
+    "ccx": "bin/ccx.mjs"
+  },
+  "main": "src/protocol.mjs",
+  "engines": {
+    "node": ">=18.18"
+  },
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "skill/",
+    "docs/CONTRACT.md",
+    "README.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "codex",
+    "orchestration",
+    "cli"
+  ],
+  "license": "MIT",
+  "private": false
+}
