@@ -96,7 +96,7 @@ function rawRow(label, value) {
  *
  * Usado em caminho: `...\projetos\api-gateway` responde "qual projeto?", que e a
  * pergunta que o orquestrador faz ao ler a linha. Cortar pela direita
- * deixaria `C:\Users\dev\Desktop\Sta...`, que nao responde nada.
+ * deixaria `C:\Users\dev\projetos\api...`, que nao responde nada.
  */
 function tail(value, max) {
   const text = String(value ?? '').trim();

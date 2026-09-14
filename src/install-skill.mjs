@@ -11,7 +11,7 @@
 //   ferramenta que executa a instalacao descreve o comportamento real
 //   melhor que documentacao descreve intencao. Medido em 2026-09-11: o
 //   dump de prompt desta maquina lista como raiz ativa
-//   `C:/Users/dev/.codex/skills/.system`, que e subpasta exatamente
+//   `<home>/.codex/skills/.system`, que e subpasta exatamente
 //   deste diretorio.
 //
 // O que ficou sem medir: nenhuma skill de USUARIO existia nesta maquina,
