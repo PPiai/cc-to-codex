@@ -2,9 +2,9 @@
 //
 // Onde a skill vai, e por que:
 //
-// - Escopo de projeto (PADRAO): `<dir>/.agents/skills/<nome>/`. E o unico
-//   caminho observado em execucao nesta maquina, via dump de prompt do
-//   proprio Codex, entao e o padrao por ser o mais firme.
+// - Escopo de projeto (PADRAO): `<dir>/.agents/skills/<nome>/`. Foi o
+//   primeiro caminho observado em execucao nesta maquina, via dump de
+//   prompt do proprio Codex, e por isso ficou como padrao.
 // - Escopo de usuario: `<CODEX_HOME>/skills/<nome>/`, com CODEX_HOME
 //   caindo em `~/.codex`. A documentacao do Codex aponta outro caminho,
 //   mas a skill embutida de instalacao do proprio Codex declara este, e
@@ -14,10 +14,14 @@
 //   `<home>/.codex/skills/.system`, que e subpasta exatamente
 //   deste diretorio.
 //
-// O que ficou sem medir: nenhuma skill de USUARIO existia nesta maquina,
-// entao o carregamento de `<CODEX_HOME>/skills/<nome>` nao foi observado em
-// execucao. Por isso o comando termina imprimindo a instrucao de conferir
-// antes de confiar. Ver `verifyHint`.
+// Observado em 2026-09-14, Codex CLI 0.154.0: com a skill instalada no
+// escopo de usuario, `codex debug prompt-input` lista `claude-dispatch`
+// entre as skills disponiveis e cita como raizes
+// `<home>/.codex/skills/.system` e `<home>/.codex/skills`. Ou seja, o
+// carregamento de `<CODEX_HOME>/skills/<nome>` foi visto em execucao, com o
+// CODEX_HOME padrao. O comando continua terminando com a instrucao de
+// conferir, porque a medicao cobre essa versao e esse CODEX_HOME. Ver
+// `verifyHint`.
 //
 // Este modulo nao imprime nem sai do processo: devolve plano e resultado,
 // e `bin/ccx.mjs` decide o que mostrar e com que codigo sair.
@@ -194,10 +198,11 @@ export function applyInstall(plan) {
 /**
  * Instrucao de conferencia, impressa sempre ao terminar.
  *
- * Existe porque a incerteza sobre o escopo de usuario e real e estreita:
- * o caminho foi deduzido da ferramenta oficial de instalacao do Codex, mas
- * o carregamento nao foi observado em execucao. Confiar sem conferir seria
- * assumir o que nao medimos.
+ * Os dois escopos ja foram observados em execucao; o de usuario em
+ * 2026-09-14, no Codex CLI 0.154.0, com o CODEX_HOME padrao. A instrucao
+ * continua porque a medicao cobre so essa versao e esse CODEX_HOME: outra
+ * versao do Codex ou outro CODEX_HOME pode divergir, e conferir custa um
+ * comando.
  *
  * @param {ReturnType<typeof planInstall>} plan
  * @returns {string}
@@ -215,9 +220,9 @@ export function verifyHint(plan) {
     );
   } else {
     lines.push(
-      'escopo de usuario: o caminho vem da skill de instalacao embutida do',
-      'proprio Codex, mas nao foi possivel observar o carregamento de skill de',
-      'usuario em execucao nesta maquina. se nao aparecer, use --scope project.',
+      'escopo de usuario: carregamento observado em execucao em 2026-09-14, no',
+      'Codex 0.154.0 com o CODEX_HOME padrao. outra versao ou outro CODEX_HOME',
+      'pode divergir; se nao aparecer, use --scope project.',
     );
   }
   return lines.join('\n');
