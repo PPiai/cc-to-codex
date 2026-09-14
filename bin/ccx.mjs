@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -56,12 +56,10 @@ import {
 import {
   SCOPES,
   applyInstall,
-  codexHome,
   planInstall,
-  projectSkillsDir,
-  userSkillsDir,
   verifyHint,
 } from '../src/install-skill.mjs';
+import { buildDoctorReport, missingRuntimeModules as faltamModulos } from '../src/doctor.mjs';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -89,23 +87,10 @@ const PERMISSION_MODES = ['acceptEdits', 'auto', 'bypassPermissions', 'manual', 
 // bypassPermissions.
 const DEFAULT_PERMISSION_MODE = 'auto';
 
-// Flags que o supervisor usa na linha de comando do Claude. O doctor
-// confere cada uma contra a ajuda local para detectar mudanca de versao
-// cedo, em vez de descobrir no meio de um despacho.
-const REQUIRED_CLAUDE_FLAGS = [
-  '--input-format',
-  '--output-format',
-  '--permission-mode',
-  '--settings',
-  '--strict-mcp-config',
-  '--tools',
-  '--verbose',
-];
-
-// Modulos que o dispatch precisa em disco. Conferidos antes de spawnar,
-// para que a falha seja "arquivo ausente" e nao uma sessao cega que morre
-// sem deixar estado.
-const RUNTIME_MODULES = ['src/supervisor.mjs', 'src/fence.mjs', 'src/state.mjs', 'src/digest.mjs'];
+// A lista de flags conferidas contra a ajuda local e a lista de modulos de
+// execucao moram em `src/doctor.mjs`: o mesmo relatorio serve a `ccx doctor`,
+// a `ccx setup` e ao postinstall, e duplicar aqui faria as tres versoes
+// divergirem na primeira mudanca de versao do Claude.
 
 const DISPATCH_FIRST_STATE_MS = 4000;
 const DISPATCH_POLL_MS = 100;
@@ -226,6 +211,29 @@ const HELP = {
   contra a ajuda local, teste de escrita em cada candidato de raiz de
   estado, versao do Codex se presente, e os diretorios de skills.`,
 
+  setup: `ccx setup [--scope user|project] [--json]
+
+  roda o diagnostico do doctor e instala a skill do Codex numa tacada so,
+  depois imprime o que ficou pronto e o que falta. idempotente: rodar de
+  novo reescreve os mesmos arquivos.
+
+  e o mesmo trabalho que o postinstall faz durante npm install -g. serve
+  para quem instalou com CCX_SKIP_POSTINSTALL definido, para quem instalou
+  sem -g, ou para reconfigurar depois de instalar o Claude Code.
+
+  DIFERENCA em relacao ao postinstall: aqui pre-requisito ausente sai com
+  codigo ${EXIT.MISSING_PREREQ}, nunca 0. o postinstall sempre sai 0 porque falhar la
+  abortaria a instalacao do pacote inteiro.
+
+  --scope <user|project>    user (PADRAO) grava em <CODEX_HOME>/skills/<nome>,
+                            com CODEX_HOME caindo em ~/.codex.
+                            project grava em .agents/skills/<nome> dentro do
+                            diretorio atual.
+                            atencao: o padrao aqui e user, e o de
+                            install-skill e project. setup e comando de
+                            maquina, install-skill e de repositorio
+  --json                    uma linha de JSON no stdout`,
+
   'install-skill': `ccx install-skill [opcoes]
 
   grava a skill nos caminhos do Codex, copiando o diretorio skill/ do
@@ -256,6 +264,7 @@ uso   ccx <comando> [opcoes]
   rm              remove o diretorio da sessao
   ls              lista sessoes conhecidas
   doctor          confere pre-requisitos e diz o que fazer
+  setup           confere e instala a skill numa tacada so
   install-skill   grava a skill nos caminhos do Codex
 
 globais
@@ -406,8 +415,9 @@ function buildSettings({ fenceOn, fencePath, cwd }) {
   };
 }
 
+/** Modulos de execucao ausentes, ja amarrados na raiz deste pacote. */
 function missingRuntimeModules() {
-  return RUNTIME_MODULES.filter((rel) => !fs.existsSync(path.join(PKG_ROOT, rel)));
+  return faltamModulos(PKG_ROOT);
 }
 
 async function cmdDispatch(ctx) {
@@ -1023,145 +1033,16 @@ function cmdLs(ctx) {
 // doctor
 // ---------------------------------------------------------------------------
 
-/** Versao do Codex, se houver. Ausencia nao e problema: o ccx roda sem ele. */
-function probeCodex() {
-  try {
-    // No Windows o executavel costuma ser .cmd, que so resolve via shell.
-    // Nesse caso o comando vai como UMA string, sem lista de argumentos:
-    // passar argumentos junto de shell:true dispara DEP0190 e, pior, faz o
-    // shell concatenar sem escapar. Comando fixo, sem entrada do usuario.
-    const useShell = process.platform === 'win32';
-    const res = useShell
-      ? spawnSync('codex --version', { encoding: 'utf8', timeout: 8000, shell: true, windowsHide: true })
-      : spawnSync('codex', ['--version'], { encoding: 'utf8', timeout: 8000, windowsHide: true });
-    if (res.status === 0) {
-      return { ok: true, version: (res.stdout ?? '').trim().split(/\r?\n/)[0] };
-    }
-    return { ok: false, error: (res.stderr ?? res.error?.message ?? `saiu com ${res.status}`).trim() };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-}
-
-/** Confere as flags usadas contra a ajuda local do binario encontrado. */
-function probeClaudeFlags(binPath) {
-  try {
-    const res = spawnSync(binPath, ['--help'], {
-      encoding: 'utf8',
-      timeout: 20000,
-      windowsHide: true,
-    });
-    const help = `${res.stdout ?? ''}${res.stderr ?? ''}`;
-    if (help.trim().length === 0) {
-      return { checked: false, error: 'a ajuda local voltou vazia' };
-    }
-    return { checked: true, missing: REQUIRED_CLAUDE_FLAGS.filter((flag) => !help.includes(flag)) };
-  } catch (err) {
-    return { checked: false, error: err.message };
-  }
-}
-
 function cmdDoctor(ctx) {
   const { options, positionals } = parse(ctx.argv, { booleans: ['json'] });
   if (positionals.length > 0) {
     throw fail(EXIT.USAGE, `doctor nao aceita argumento posicional. recebido: ${positionals.join(', ')}`);
   }
 
-  const problems = [];
-
-  // Cada sonda e isolada em try/catch porque o contrato do doctor e nunca
-  // lancar por pre-requisito ausente: ele RELATA e sai com codigo depois de
-  // imprimir tudo. E o comando que se roda quando nada funciona.
-  let claude = { ok: false, error: 'nao avaliado' };
-  try {
-    const found = resolveClaudeBinary({ env: ctx.env });
-    claude = { ok: true, path: found.path, version: found.version };
-  } catch (err) {
-    claude = { ok: false, error: err.message };
-    problems.push({
-      what: 'binario do Claude Code nao encontrado ou nao executa',
-      fix: 'CCX_CLAUDE_BIN="<caminho absoluto do claude>" ccx doctor',
-    });
-  }
-
-  const flags = claude.ok ? probeClaudeFlags(claude.path) : { checked: false, error: 'sem binario' };
-  if (flags.checked && (flags.missing ?? []).length > 0) {
-    problems.push({
-      what: `flags que o supervisor usa nao aparecem na ajuda local: ${flags.missing.join(', ')}`,
-      fix: `"${claude.path}" --help    e conferir o nome novo antes de despachar`,
-    });
-  }
-
-  let candidates = [];
-  try {
-    candidates = probeStateRoots({ cwd: ctx.cwd, env: ctx.env }) ?? [];
-  } catch (err) {
-    candidates = [];
-    problems.push({ what: `sondagem de raiz de estado falhou: ${err.message}`, fix: 'ccx doctor --json' });
-  }
-  const chosen = candidates.find((c) => c.ok)?.path ?? null;
-  if (!chosen) {
-    problems.push({
-      what: 'nenhum candidato de raiz de estado aceita escrita',
-      fix: 'CCX_STATE_DIR="<caminho gravavel>" ccx dispatch ...    (ou amplie as raizes gravaveis do Codex)',
-    });
-  }
-
-  const missingModules = missingRuntimeModules();
-  if (missingModules.length > 0) {
-    problems.push({
-      what: `modulos do pacote ausentes: ${missingModules.join(', ')}`,
-      fix: 'reinstale o cc-to-codex, ou rode o ccx da raiz do pacote',
-    });
-  }
-
-  const nodeMajor = Number(process.versions.node.split('.')[0]);
-  if (nodeMajor < 18) {
-    problems.push({
-      what: `node ${process.versions.node} e anterior ao piso 18.18`,
-      fix: 'atualize o Node para 18.18 ou mais novo',
-    });
-  }
-
-  // Aviso e diferente de problema: aviso nao impede despachar e por isso
-  // nao muda o codigo de saida. Misturar os dois faria o doctor mentir nas
-  // duas direcoes: ou sairia 5 por skill ausente, ou diria "tudo pronto"
-  // com uma pendencia real na tela.
-  const warnings = [];
-  const skillDir = path.join(PKG_ROOT, 'skill');
-  if (!fs.existsSync(skillDir)) {
-    warnings.push('o diretorio skill/ nao existe: ccx install-skill nao tem o que copiar.');
-  }
-
-  const report = {
-    version: VERSION,
-    node: process.versions.node,
-    platform: `${process.platform} ${process.arch}`,
-    claude,
-    flags,
-    pkg: {
-      ok: missingModules.length === 0,
-      root: PKG_ROOT,
-      missing: missingModules,
-      skillDir: fs.existsSync(skillDir) ? skillDir : null,
-    },
-    roots: { chosen, candidates },
-    codex: (() => {
-      const found = probeCodex();
-      if (!found.ok) {
-        warnings.push('Codex CLI nao detectado no PATH: o ccx funciona sem ele, mas install-skill nao tem como ser conferido.');
-      }
-      return found;
-    })(),
-    skills: {
-      codexHome: codexHome(ctx.env),
-      user: userSkillsDir(ctx.env),
-      project: projectSkillsDir(ctx.cwd),
-    },
-    problems,
-    warnings,
-    ok: problems.length === 0,
-  };
+  // O relatorio inteiro e montado por `src/doctor.mjs`, que nunca lanca por
+  // pre-requisito ausente: relata tudo e devolve. Aqui so decidimos formato
+  // e codigo de saida.
+  const report = buildDoctorReport({ cwd: ctx.cwd, env: ctx.env, pkgRoot: PKG_ROOT });
 
   if (options.json) emitJson({ ok: report.ok, command: 'doctor', report });
   else out(renderDoctor(report));
@@ -1230,6 +1111,126 @@ function cmdInstallSkill(ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// setup
+// ---------------------------------------------------------------------------
+
+/**
+ * Diagnostico e instalacao da skill numa tacada so.
+ *
+ * E o mesmo trabalho que `scripts/postinstall.mjs` faz sozinho durante
+ * `npm install -g`, com UMA diferenca deliberada de contrato: o postinstall
+ * termina sempre com 0, porque falhar la aborta a instalacao inteira do
+ * pacote por causa de um pre-requisito que o usuario ainda vai instalar.
+ * Aqui nao: quem digita `ccx setup` esta perguntando "esta pronto?", e
+ * responder 0 com o Claude Code ausente seria mentir para um script que
+ * encadeia comandos. Por isso pre-requisito ausente sai com o mesmo codigo 5
+ * do doctor.
+ *
+ * Idempotente: instalar por cima do que ja existe reescreve os mesmos
+ * arquivos com o mesmo conteudo.
+ */
+function cmdSetup(ctx) {
+  const { options, positionals } = parse(ctx.argv, {
+    strings: ['scope'],
+    booleans: ['json'],
+  });
+  if (positionals.length > 0) {
+    throw fail(
+      EXIT.USAGE,
+      `setup nao aceita argumento posicional. recebido: ${positionals.join(', ')}. ` +
+        `use --scope ${SCOPES.join('|')}`,
+    );
+  }
+
+  // Padrao `user`, e nao `project` como em install-skill: setup e o comando
+  // de quem acabou de instalar a CLI na maquina e quer a skill disponivel em
+  // qualquer repositorio, nao so no diretorio em que por acaso esta parado.
+  const scope = options.scope ?? 'user';
+  if (!SCOPES.includes(scope)) {
+    throw fail(EXIT.USAGE, `--scope invalido: ${scope}. aceitos: ${SCOPES.join(', ')}`);
+  }
+
+  const report = buildDoctorReport({ cwd: ctx.cwd, env: ctx.env, pkgRoot: PKG_ROOT });
+
+  // A instalacao acontece MESMO com problema no diagnostico. Copiar a skill
+  // nao depende do Claude Code estar instalado, e quem roda o setup numa
+  // maquina onde o Claude ainda vai chegar prefere sair com a metade que da
+  // para deixar pronta do que com nada.
+  let skill = { ok: false, error: 'nao avaliado' };
+  try {
+    const plan = planInstall({
+      cwd: ctx.cwd,
+      scope,
+      env: ctx.env,
+      root: PKG_ROOT,
+    });
+    const applied = applyInstall(plan);
+    skill = {
+      ok: true,
+      scope: plan.scope,
+      name: plan.name,
+      destDir: plan.destDir,
+      written: applied.written,
+      bytes: applied.bytes,
+      overwrote: plan.overwrites.length > 0,
+      verify: verifyHint(plan),
+    };
+  } catch (err) {
+    // O erro entra no resumo em vez de subir: subir aqui esconderia o
+    // relatorio que ja foi montado, que e a parte cara do comando.
+    skill = { ok: false, scope, error: err.message };
+  }
+
+  const ok = report.ok && skill.ok;
+
+  if (options.json) {
+    emitJson({ ok, command: 'setup', scope, skill, report });
+    return ok ? EXIT.OK : EXIT.MISSING_PREREQ;
+  }
+
+  const pronto = [];
+  const falta = [];
+
+  if (report.claude.ok) pronto.push(`claude code ${report.claude.version} em ${report.claude.path}`);
+  if (report.roots.chosen) pronto.push(`raiz de estado gravavel: ${report.roots.chosen}`);
+  if (report.codex?.ok) pronto.push(`codex cli ${report.codex.version}`);
+  if (skill.ok) {
+    pronto.push(`skill "${skill.name}" escopo ${skill.scope}: ${skill.written} arquivo(s) em ${skill.destDir}`);
+  } else {
+    falta.push({ what: `a skill nao foi instalada: ${skill.error}`, fix: `ccx install-skill --scope ${scope} --dry-run` });
+  }
+  for (const p of report.problems) falta.push(p);
+
+  out(`ccx ${report.version}   node ${report.node}   ${report.platform}`);
+  out('');
+  out('pronto');
+  if (pronto.length === 0) out('  (nada)');
+  for (const linha of pronto) out(`  ok    ${linha}`);
+
+  if (falta.length > 0) {
+    out('');
+    out('falta');
+    for (const p of falta) {
+      out(`  FALHA ${p.what}`);
+      if (p.fix) out(`        ${p.fix}`);
+    }
+  }
+
+  // Aviso nao muda o codigo de saida, mesma regra do doctor.
+  for (const aviso of report.warnings ?? []) note(`aviso: ${aviso}`);
+
+  if (skill.ok) {
+    out('');
+    out(skill.verify);
+  }
+
+  out('');
+  out(ok ? 'tudo pronto. despache com: ccx dispatch --task "..."' : 'pendencias acima. detalhe completo: ccx doctor');
+
+  return ok ? EXIT.OK : EXIT.MISSING_PREREQ;
+}
+
+// ---------------------------------------------------------------------------
 // Despacho de subcomando
 // ---------------------------------------------------------------------------
 
@@ -1244,6 +1245,7 @@ const COMMANDS = {
   rm: cmdRm,
   ls: cmdLs,
   doctor: cmdDoctor,
+  setup: cmdSetup,
   'install-skill': cmdInstallSkill,
 };
 
