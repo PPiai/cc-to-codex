@@ -122,6 +122,10 @@ Não há dependências para baixar: o pacote é Node puro, ESM, e a árvore de
 > fim, e o pacote chega vazio. A URL do tarball instala uma cópia de verdade. Se
 > preferir a forma curta, acrescente `--install-links`.
 
+Se você já rodou a forma `github:` e agora todo `ccx` falha com `MODULE_NOT_FOUND`,
+veja a entrada `Cannot find module ... postinstall.mjs` em
+[Solução de problemas](#solução-de-problemas).
+
 **Pré-requisitos**
 
 | Requisito | Por quê |
@@ -540,7 +544,7 @@ um caminho sob o diretório do usuário, enquanto a skill embutida de instalaç�
 próprio Codex declara `$CODEX_HOME/skills/<nome>`, com padrão em `~/.codex/skills`.
 A divergência foi resolvida em favor do diretório de configuração, porque é a
 ferramenta oficial que executa a instalação e portanto descreve o comportamento
-real.
+real, e a execução depois confirmou a escolha.
 
 Não existe subcomando de listagem de skills no Codex 0.154.0 — conferido por
 `codex --help` e por `codex skills --help`, que cai na ajuda geral. O que existe é
@@ -550,7 +554,11 @@ o dump de prompt, e é para ele que a instrução de conferência aponta:
 codex debug prompt-input   # e procure o nome da skill na seção de skills
 ```
 
-**O escopo de projeto é o caminho firme**, confirmado em execução.
+**Os dois escopos já foram observados em execução.** O de projeto primeiro, e o
+de usuário em 2026-09-14, no Codex 0.154.0: com a skill instalada nesse escopo, o
+dump listou `claude-dispatch` entre as skills disponíveis e citou como raízes
+`<home>/.codex/skills/.system` e `<home>/.codex/skills`. A conferência continua
+valendo, porque essa medição cobre essa versão e o `CODEX_HOME` padrão.
 
 ---
 
@@ -576,6 +584,7 @@ desenvolvimento Windows, entre 2026-09-11 e 2026-09-14 — não foi lido em docu
 | No Windows, `spawn` de um `.cmd` exige `shell`, e de um `.mjs` não funciona | `EINVAL` e `EFTYPE`, respectivamente, com Node 24.19.0 |
 | Gravabilidade não se presume: sob token restrito, **nenhum** candidato de raiz aceitou escrita | `EPERM` no diretório de trabalho, no temporário e no de aplicação |
 | Em instalação global, `npm install -g github:<dono>/<repo>` de um pacote com script de instalação chega vazio | npm 10.9.9 e 11.17.0: `node_modules/<pacote>` virou link para `_cacache/tmp/git-clone*`, apagado no fim; a URL de tarball e `--install-links` instalaram cópia real |
+| O Codex carrega skill de usuário de `~/.codex/skills/<nome>`, o padrão de `$CODEX_HOME/skills` | Codex CLI 0.154.0, em 2026-09-14: com a skill instalada no escopo de usuário, `codex debug prompt-input` listou `claude-dispatch` entre as skills disponíveis e citou como raízes `<home>/.codex/skills/.system` e `<home>/.codex/skills` |
 
 **Flags que não existem nesta versão** e que relatórios de pesquisa citaram por
 engano: `--allow-tools` (o nome correto é `--tools`), `--max-turns` e
@@ -592,6 +601,65 @@ para detectar mudança de versão cedo.
 ```bash
 ccx doctor
 ```
+
+### `Cannot find module ... postinstall.mjs` ao instalar com `github:`
+
+A forma curta `npm install -g github:PPiai/cc-to-codex` falha no script de
+instalação:
+
+```
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c node scripts/postinstall.mjs
+npm error Error: Cannot find module 'C:\Users\<voce>\AppData\Roaming\npm\node_modules\cc-to-codex\scripts\postinstall.mjs'
+npm error   code: 'MODULE_NOT_FOUND',
+```
+
+Em instalação global de um pacote com script de instalação, o npm transforma a
+forma `github:` num link para um clone temporário (`_cacache/tmp/git-clone*`) que
+ele mesmo apaga no fim, e o pacote chega vazio. Reproduzido no npm 10.9.9 e no
+11.17.0; instalação local, sem `-g`, não tem o problema.
+
+**1. Apague os atalhos órfãos.** A tentativa falha deixa `ccx`, `ccx.cmd` e
+`ccx.ps1` no prefixo global do npm apontando para um pacote que não existe, e todo
+`ccx` seguinte dá `MODULE_NOT_FOUND`. `npm ls -g` não lista o pacote, e
+`npm uninstall -g cc-to-codex` sai com código 0 sem remover os atalhos. A limpeza
+é à mão, e só nesses nomes.
+
+No Windows, os três ficam direto no diretório que `npm config get prefix` imprime
+(tipicamente `%APPDATA%\npm`):
+
+```powershell
+# PowerShell
+$prefix = (npm config get prefix).Trim()
+foreach ($name in 'ccx', 'ccx.cmd', 'ccx.ps1') {
+  $shim = Join-Path $prefix $name
+  if (Test-Path -LiteralPath $shim) { Remove-Item -LiteralPath $shim }
+}
+```
+
+No Linux e no macOS, o layout padrão do npm põe o atalho em `<prefixo>/bin/ccx`.
+Isso é o layout documentado do npm, não uma medição feita aqui:
+
+```bash
+# bash / zsh
+prefix="$(npm config get prefix)" && [ -n "$prefix" ] && rm -f -- "$prefix/bin/ccx"
+```
+
+**2. Instale com uma forma que funciona.** A URL do tarball, que é a forma oficial
+deste README:
+
+```bash
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
+```
+
+Ou a forma curta com `--install-links`:
+
+```bash
+npm install -g --install-links github:PPiai/cc-to-codex
+```
+
+As duas foram verificadas no npm 10 e no 11. Rodar uma delas por cima, sem a
+limpeza, também resolve, porque o npm reescreve os atalhos; a limpeza explícita
+vem primeiro porque é ela que tira o `ccx` quebrado do PATH.
 
 ### Nenhuma raiz de estado gravável (código 4)
 

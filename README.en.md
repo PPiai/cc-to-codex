@@ -125,6 +125,10 @@ There's nothing to download: the package is plain Node, ESM, and the
 > package arrives empty. The tarball URL installs a real copy. If you prefer the
 > short form, add `--install-links`.
 
+If you already ran the `github:` form and every `ccx` now fails with
+`MODULE_NOT_FOUND`, see the `Cannot find module ... postinstall.mjs` entry under
+[Troubleshooting](#troubleshooting).
+
 **Prerequisites**
 
 | Requirement | Why |
@@ -542,7 +546,8 @@ about where a user skill should live. The documentation points to a path under t
 user's home directory, while Codex's own built-in install skill declares
 `$CODEX_HOME/skills/<name>`, defaulting to `~/.codex/skills`. The conflict was
 settled in favor of the config directory, because the official tool is the one that
-actually performs the install, and therefore describes the real behavior.
+actually performs the install, and therefore describes the real behavior; a real
+run later confirmed that choice.
 
 There is no skill-listing subcommand in Codex 0.154.0 — checked with `codex --help`
 and with `codex skills --help`, which falls back to the general help. What does exist
@@ -552,7 +557,11 @@ is the prompt dump, and that's what the verification instructions point to:
 codex debug prompt-input   # then look for the skill name in the skills section
 ```
 
-**Project scope is the solid path**, confirmed in a real run.
+**Both scopes have now been observed in a real run.** Project scope first, and user
+scope on 2026-09-14, on Codex 0.154.0: with the skill installed at that scope, the
+dump listed `claude-dispatch` among the available skills and cited
+`<home>/.codex/skills/.system` and `<home>/.codex/skills` as roots. Verifying still
+pays off, because that measurement covers that version and the default `CODEX_HOME`.
 
 ---
 
@@ -578,6 +587,7 @@ machine, between 2026-09-11 and 2026-09-14 — not read from documentation.
 | On Windows, `spawn` on a `.cmd` requires `shell`, and on a `.mjs` it doesn't work | `EINVAL` and `EFTYPE`, respectively, with Node 24.19.0 |
 | Writability can't be taken for granted: under a restricted token, **no** root candidate accepted writes | `EPERM` in the working, temp, and application directories |
 | On a global install, `npm install -g github:<owner>/<repo>` of a package with an install script arrives empty | npm 10.9.9 and 11.17.0: `node_modules/<package>` became a link to `_cacache/tmp/git-clone*`, deleted at the end; the tarball URL and `--install-links` installed a real copy |
+| Codex loads user skills from `~/.codex/skills/<name>`, the default for `$CODEX_HOME/skills` | Codex CLI 0.154.0, on 2026-09-14: with the skill installed at user scope, `codex debug prompt-input` listed `claude-dispatch` among the available skills and cited `<home>/.codex/skills/.system` and `<home>/.codex/skills` as roots |
 
 **Flags that don't exist in this version**, even though research reports cited them
 by mistake: `--allow-tools` (the correct name is `--tools`), `--max-turns`, and
@@ -594,6 +604,65 @@ to catch version changes early.
 ```bash
 ccx doctor
 ```
+
+### `Cannot find module ... postinstall.mjs` when installing with `github:`
+
+The short form `npm install -g github:PPiai/cc-to-codex` fails in the install
+script:
+
+```
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c node scripts/postinstall.mjs
+npm error Error: Cannot find module 'C:\Users\<you>\AppData\Roaming\npm\node_modules\cc-to-codex\scripts\postinstall.mjs'
+npm error   code: 'MODULE_NOT_FOUND',
+```
+
+On a global install of a package with an install script, npm turns the `github:`
+form into a link to a temporary clone (`_cacache/tmp/git-clone*`) that npm itself
+deletes at the end, so the package arrives empty. Reproduced on npm 10.9.9 and
+11.17.0; a local install, without `-g`, doesn't have the problem.
+
+**1. Delete the orphaned shims.** The failed attempt leaves `ccx`, `ccx.cmd`, and
+`ccx.ps1` in npm's global prefix, pointing to a package that doesn't exist, so every
+`ccx` after that fails with `MODULE_NOT_FOUND`. `npm ls -g` doesn't list the
+package, and `npm uninstall -g cc-to-codex` exits with code 0 without removing the
+shims. The cleanup is manual, and limited to those names.
+
+On Windows, all three sit directly in the directory `npm config get prefix` prints
+(typically `%APPDATA%\npm`):
+
+```powershell
+# PowerShell
+$prefix = (npm config get prefix).Trim()
+foreach ($name in 'ccx', 'ccx.cmd', 'ccx.ps1') {
+  $shim = Join-Path $prefix $name
+  if (Test-Path -LiteralPath $shim) { Remove-Item -LiteralPath $shim }
+}
+```
+
+On Linux and macOS, npm's default layout puts the shim at `<prefix>/bin/ccx`.
+That's npm's documented layout, not something measured here:
+
+```bash
+# bash / zsh
+prefix="$(npm config get prefix)" && [ -n "$prefix" ] && rm -f -- "$prefix/bin/ccx"
+```
+
+**2. Install with a form that works.** The tarball URL, which is the official form
+in this README:
+
+```bash
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
+```
+
+Or the short form with `--install-links`:
+
+```bash
+npm install -g --install-links github:PPiai/cc-to-codex
+```
+
+Both were verified on npm 10 and 11. Running either one over the top, without the
+cleanup, also fixes it, because npm rewrites the shims; the explicit cleanup still
+comes first because it's what takes the broken `ccx` off your PATH.
 
 ### No writable state root (code 4)
 
