@@ -1,0 +1,57 @@
+# Suite completa nas duas plataformas que importam para este projeto e nas
+# tres versoes de Node que o package.json diz suportar.
+#
+# Duas escolhas que evitam um CI vermelho por motivo que nao e o codigo:
+#
+# 1. Nao ha passo de instalacao de dependencia. O projeto e zero-dep de
+#    proposito, entao nao existe node_modules a montar, nao existe lockfile,
+#    e `cache: npm` no setup-node FALHARIA justamente por nao achar lockfile.
+# 2. CCX_SKIP_POSTINSTALL fica no nivel do workflow, e nao como
+#    `--ignore-scripts` no passo de teste. Nenhum passo aqui roda
+#    `npm install`, entao o postinstall nao teria como disparar de qualquer
+#    forma; a variavel cobre um passo futuro que venha a instalar algo.
+#    `npm test --ignore-scripts` foi descartado de proposito: o efeito dessa
+#    flag sobre `npm run` mudou entre versoes de npm, e uma versao que
+#    entenda "nao rode o script" deixaria o CI VERDE sem ter rodado teste
+#    nenhum, que e pior que vermelho.
+#
+# A suite nao gasta cota paga: os testes apontam CCX_CLAUDE_BIN para o Claude
+# falso de tests/fake-claude.mjs, e ha um portao que aborta se a injecao
+# quebrar.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CCX_SKIP_POSTINSTALL: '1'
+  CI: 'true'
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} em ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Uma combinacao quebrada nao esconde o resultado das outras: saber se
+      # a falha e de uma versao so ou de todas e metade do diagnostico.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        node: ['18.x', '20.x', '22.x']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: versoes
+        run: node --version && npm --version
+
+      - name: testes
+        run: npm test
