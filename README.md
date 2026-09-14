@@ -20,7 +20,7 @@
 ---
 
 ```bash
-npm install -g github:PPiai/cc-to-codex
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 Um comando. O `postinstall` roda o diagnóstico e instala a skill do Codex sozinho.
@@ -110,11 +110,17 @@ com excedente somado, e a última frase do assistente vem truncada.
 ## Instalação
 
 ```bash
-npm install -g github:PPiai/cc-to-codex
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 Não há dependências para baixar: o pacote é Node puro, ESM, e a árvore de
 `node_modules` fica vazia.
+
+> **Por que a URL do tarball, e não `github:PPiai/cc-to-codex`?** Em instalação
+> global de um pacote com script de instalação, o npm 10 e o 11 transformam a
+> forma `github:` num link para um clone temporário que eles mesmos apagam no
+> fim, e o pacote chega vazio. A URL do tarball instala uma cópia de verdade. Se
+> preferir a forma curta, acrescente `--install-links`.
 
 **Pré-requisitos**
 
@@ -147,7 +153,7 @@ caminho onde a skill foi gravada. Para ver, rode `ccx setup` em seguida, ou
 instale com a saída dos scripts visível:
 
 ```bash
-npm install -g github:PPiai/cc-to-codex --foreground-scripts
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main --foreground-scripts
 ```
 
 O mesmo `ccx setup` cobre o caso de um `npm` configurado para não rodar scripts
@@ -158,12 +164,12 @@ automatizada:
 
 ```bash
 # bash / zsh
-CCX_SKIP_POSTINSTALL=1 npm install -g github:PPiai/cc-to-codex
+CCX_SKIP_POSTINSTALL=1 npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 ```powershell
 # PowerShell
-$env:CCX_SKIP_POSTINSTALL = "1"; npm install -g github:PPiai/cc-to-codex
+$env:CCX_SKIP_POSTINSTALL = "1"; npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 ### `ccx setup`
@@ -569,6 +575,7 @@ desenvolvimento Windows, em 2026-09-11 — não foi lido em documentação.
 | Uma sessão headless completa roda dentro do sandbox do Codex, autenticada por OAuth | Execução sob `codex sandbox` retornou o texto pedido |
 | No Windows, `spawn` de um `.cmd` exige `shell`, e de um `.mjs` não funciona | `EINVAL` e `EFTYPE`, respectivamente, com Node 24.19.0 |
 | Gravabilidade não se presume: sob token restrito, **nenhum** candidato de raiz aceitou escrita | `EPERM` no diretório de trabalho, no temporário e no de aplicação |
+| Em instalação global, `npm install -g github:<dono>/<repo>` de um pacote com script de instalação chega vazio | npm 10.9.9 e 11.17.0: `node_modules/<pacote>` virou link para `_cacache/tmp/git-clone*`, apagado no fim; a URL de tarball e `--install-links` instalaram cópia real |
 
 **Flags que não existem nesta versão** e que relatórios de pesquisa citaram por
 engano: `--allow-tools` (o nome correto é `--tools`), `--max-turns` e

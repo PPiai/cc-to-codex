@@ -20,7 +20,7 @@
 ---
 
 ```bash
-npm install -g github:PPiai/cc-to-codex
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 One command. `postinstall` runs the diagnostics and installs the Codex skill on its own.
@@ -113,11 +113,17 @@ the overflow tallied, and the assistant's last sentence gets truncated.
 ## Installation
 
 ```bash
-npm install -g github:PPiai/cc-to-codex
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 There's nothing to download: the package is plain Node, ESM, and the
 `node_modules` tree stays empty.
+
+> **Why the tarball URL instead of `github:PPiai/cc-to-codex`?** On a global
+> install of a package with an install script, npm 10 and 11 turn the `github:`
+> form into a link to a temporary clone that npm itself deletes afterwards, so the
+> package arrives empty. The tarball URL installs a real copy. If you prefer the
+> short form, add `--install-links`.
 
 **Prerequisites**
 
@@ -149,7 +155,7 @@ written to. To see them, run `ccx setup` afterwards, or install with script outp
 visible:
 
 ```bash
-npm install -g github:PPiai/cc-to-codex --foreground-scripts
+npm install -g https://github.com/PPiai/cc-to-codex/tarball/main --foreground-scripts
 ```
 
 The same `ccx setup` covers an `npm` configured not to run install scripts:
@@ -160,12 +166,12 @@ install:
 
 ```bash
 # bash / zsh
-CCX_SKIP_POSTINSTALL=1 npm install -g github:PPiai/cc-to-codex
+CCX_SKIP_POSTINSTALL=1 npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 ```powershell
 # PowerShell
-$env:CCX_SKIP_POSTINSTALL = "1"; npm install -g github:PPiai/cc-to-codex
+$env:CCX_SKIP_POSTINSTALL = "1"; npm install -g https://github.com/PPiai/cc-to-codex/tarball/main
 ```
 
 ### `ccx setup`
@@ -571,6 +577,7 @@ machine, on 2026-09-11 — not read from documentation.
 | A full headless session runs inside the Codex sandbox, authenticated via OAuth | A run under `codex sandbox` returned the requested text |
 | On Windows, `spawn` on a `.cmd` requires `shell`, and on a `.mjs` it doesn't work | `EINVAL` and `EFTYPE`, respectively, with Node 24.19.0 |
 | Writability can't be taken for granted: under a restricted token, **no** root candidate accepted writes | `EPERM` in the working, temp, and application directories |
+| On a global install, `npm install -g github:<owner>/<repo>` of a package with an install script arrives empty | npm 10.9.9 and 11.17.0: `node_modules/<package>` became a link to `_cacache/tmp/git-clone*`, deleted at the end; the tarball URL and `--install-links` installed a real copy |
 
 **Flags that don't exist in this version**, even though research reports cited them
 by mistake: `--allow-tools` (the correct name is `--tools`), `--max-turns`, and

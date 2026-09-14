@@ -1,4 +1,4 @@
-// Configuracao automatica depois de `npm install -g github:PPiai/cc-to-codex`.
+// Configuracao automatica depois de `npm install -g https://github.com/PPiai/cc-to-codex/tarball/main`.
 //
 // REGRA UNICA E INEGOCIAVEL: este arquivo SEMPRE termina com codigo 0.
 //
@@ -88,7 +88,7 @@ async function main() {
     // Nunca sugerir `npx ccx`: o nome `ccx` no registro do npm pertence a
     // outro pacote, e o npx baixaria e executaria esse pacote se nao achasse
     // o binario local.
-    note('ccx: instalacao local, nada configurado. para configurar: npm install -g github:PPiai/cc-to-codex');
+    note('ccx: instalacao local, nada configurado. para configurar: npm install -g https://github.com/PPiai/cc-to-codex/tarball/main');
     return;
   }
 
