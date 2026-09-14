@@ -409,7 +409,12 @@ test('binario terminado em envelope de lote e recusado com mensagem acionavel', 
 // ---------------------------------------------------------------------------
 
 test('o despacho retorna na hora, com identificador e estado inicial', { skip }, () => {
-  const amb = ambiente();
+  // Comportamento lento de proposito. Com o padrao, o Claude falso fecha o
+  // turno em milissegundos, e numa maquina rapida o supervisor grava `done`
+  // antes de o dispatch ler o estado: medido no CI do Ubuntu com Node 20 e
+  // 22. O que este teste prova e que o dispatch nao espera o turno, e isso
+  // so e observavel se o turno ainda estiver aberto quando ele retorna.
+  const amb = ambiente({ behavior: 'slow', extra: { CCX_FAKE_DELAY_MS: '10000' } });
   const r = amb.json('dispatch', '--task', 'refatore auth', '--label', 'refactor-auth', '--json');
   assert.equal(r.code, EXIT.OK, r.stdout + r.stderr);
   assert.equal(r.json.ok, true);
