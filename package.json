@@ -11,14 +11,17 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "test": "node --test \"tests/*.test.mjs\""
+    "test": "node scripts/run-tests.mjs",
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "files": [
     "bin/",
     "src/",
     "skill/",
+    "scripts/",
     "docs/CONTRACT.md",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "keywords": [
     "claude-code",
@@ -26,6 +29,15 @@
     "orchestration",
     "cli"
   ],
+  "author": "PPiai",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PPiai/cc-to-codex.git"
+  },
+  "homepage": "https://github.com/PPiai/cc-to-codex#readme",
+  "bugs": {
+    "url": "https://github.com/PPiai/cc-to-codex/issues"
+  },
   "private": false
 }
