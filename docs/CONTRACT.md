@@ -39,7 +39,8 @@ Responsavel por descobrir onde gravar e onde esta o Claude.
 ```js
 /**
  * Resolve a raiz de estado, testando gravabilidade de verdade.
- * Ordem: env CCX_STATE_DIR, depois <cwd>/.ccx, depois tmpdir/cc-to-codex.
+ * Ordem: env CCX_STATE_DIR, depois <cwd>/.ccx, depois tmpdir/cc-to-codex,
+ * depois o diretorio de estado de aplicacao do usuario.
  * Testa escrevendo e removendo um arquivo em cada candidato.
  * Cria a raiz escolhida.
  * Lanca fail(EXIT.NO_WRITABLE_ROOT) com a lista de tentativas na mensagem
