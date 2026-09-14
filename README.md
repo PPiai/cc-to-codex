@@ -747,8 +747,8 @@ Contribuições são bem-vindas. Antes de abrir um PR:
    regra 3 acima vale para PR também.
 3. Fato novo sobre o ambiente só entra na tabela de fatos verificados com a forma
    de verificação ao lado. Nada de documentação copiada.
-4. Mensagens de commit e discussão em português; identificadores e código
-   seguem a convenção do repositório.
+4. Issues e PRs podem ser em português ou inglês. O histórico de commits segue
+   em português; identificadores e código seguem a convenção do repositório.
 
 Encontrou uma divergência entre o que este README afirma e o que o código faz?
 Isso é um bug, e o relato dele é tão útil quanto uma correção.
