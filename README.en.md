@@ -559,7 +559,7 @@ codex debug prompt-input   # then look for the skill name in the skills section
 ## Verified facts about the environment
 
 Everything below was verified by **running it directly** on a Windows development
-machine, on 2026-09-11 — not read from documentation.
+machine, between 2026-09-11 and 2026-09-14 — not read from documentation.
 
 | Fact | How it was verified |
 |---|---|

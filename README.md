@@ -557,7 +557,7 @@ codex debug prompt-input   # e procure o nome da skill na seção de skills
 ## Fatos verificados sobre o ambiente
 
 Tudo abaixo foi verificado por **execução direta** numa máquina de
-desenvolvimento Windows, em 2026-09-11 — não foi lido em documentação.
+desenvolvimento Windows, entre 2026-09-11 e 2026-09-14 — não foi lido em documentação.
 
 | Fato | Como foi verificado |
 |---|---|
