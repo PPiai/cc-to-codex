@@ -1,0 +1,8 @@
+# O tarball que o GitHub gera para `npm install -g .../tarball/main` respeita
+# export-ignore, e e ele que chega na maquina de quem instala. O campo `files`
+# do package.json so vale para `npm pack`, entao sem isto a instalacao levaria
+# a suite de testes e o CI junto.
+/tests export-ignore
+/.github export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
